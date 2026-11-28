@@ -2,9 +2,9 @@
 
 Built for the **Waterloo Engineering Competition (Bio-Engineering, Nov 2026)**, where it won **1st place**. The brief: cut herbicide contamination in the Châteauguay River watershed. Team: Thomas Kim (team captain) and Samuel Koo. NEPHRON (first called DC-BAS) sits at the outlet of a field's tile drain: a woodchip trench, then a carbon box with three wood-biochar cartridges and a granular activated carbon (GAC) polish, run by a digital twin.
 
-**Samuel Koo built the digital twin**: the sensor layout, a year-long visual simulation of the unit, and the Monte Carlo season model in `dcbas_sim.py`.
+**Samuel Koo built the digital twin**: the sensor layout, a year-long visual simulation of the unit, and the Monte Carlo season model in `dcbas_sim.py`. The revised report, the v2 model and the CAD are in `report-v2/` and `cad/`.
 
-![The twin during a storm: sensors report rising flow and it tells the farmer to hold water upstream](docs/digital-twin-storm.png)
+![The twin during a storm: sensors report rising flow and it tells the farmer to hold water in the field. The carbon box holds three biochar cartridges (C1-C3) and a GAC polish](docs/digital-twin-storm.png)
 
 ## Results (revised report, v2)
 
@@ -34,6 +34,33 @@ The full v2 model is in [`report-v2/`](report-v2/). It keeps the weather model f
 cd report-v2
 python nephron_v2_sim.py figures              # 5 designs x 200 seasons, writes figures/v2_sim_results.json
 python build_v2_figures.py figures figures    # redraws Figs. 2-5
+```
+
+## CAD design
+
+The whole unit as solid CAD at real scale, built in code with [build123d](https://github.com/gumyr/build123d) (OpenCascade), and a general-arrangement drawing made from its hidden-line views. Sizes are the report's: one 7 L/s design flow from a 20 ha field.
+
+![NEPHRON general arrangement: plan, section A-A and carbon box detail, with parts list and title block](docs/nephron-ga.png)
+
+| Part | Size |
+|---|---|
+| Inlet and outlet control boxes | 1.2 × 1.2 m precast, stop logs, Treat/Bypass board |
+| Woodchip trench | 26 × 6 × 1.2 m, lined, 187 m³, 4.1 h at 7 L/s, in a grassed strip at the field edge |
+| Carbon box | 10.5 × 2.2 × 2.6 m precast, 200 mm walls, insulated locked lids |
+| Biochar cartridges C1–C3 | 3 × (2.5 × 1.5 × 2.0 m) = 22.5 m³, 54 min contact |
+| GAC polish cartridge | 4 m³, 9.5 min contact |
+| Bypass | 200 mm pipe, about 27 L/s flowing full at 0.5% |
+| Sensors | flow, level and temperature, solar logger with telemetry |
+
+- [`cad/out/nephron.step`](cad/out/nephron.step): the assembly, one named solid per part. Opens in Fusion, Onshape and SolidWorks.
+- [`cad/out/nephron-ga.svg`](cad/out/nephron-ga.svg): the drawing (A3; plan and section at 1:200, carbon box at 1:50).
+- [`cad/nephron.py`](cad/nephron.py) builds the model; [`cad/drawing.py`](cad/drawing.py) draws the sheet.
+
+```bash
+cd cad
+pip install -r requirements.txt
+python nephron.py out                          # nephron.step + views.json
+python drawing.py out/views.json out/nephron-ga.svg
 ```
 
 ## Nephron 2.0 and 2.5 (exploration, not yet checked against sources)
@@ -89,17 +116,18 @@ Coverage is the largest single lever: at 100% of fields the same design reaches 
 
 - **`report-v2/nephron_v2_sim.py`**: the report's model. Same weather as below; adds one design flow for every stage, a biochar capacity from Freundlich isotherm data, a polish whose removal depends on contact time, a limit on how much storm water the soil can hold, and ranges for every uncertain input (Table IV of the report). Each design runs 200 seasons; results are P10 / P50 / P90.
 - **`dcbas_sim.py`**: one growing season = 183 days. Rain is random (18% chance a day, gamma-distributed amounts); soil moisture turns rain into drain flow, and heavy rain (>12 mm) also makes surface runoff. Atrazine spikes after spraying on day 45 and is washed out by flow. Removal chains the stages (woodchips, carbon falling as it saturates, polishing 50%). Flow above the unit's capacity bypasses it untreated. Every gram is tracked into four buckets (runoff, bypass, leak, still stored at season end), and each design runs 2000 random seasons; the printed number is the median.
-- **`cycle.py`**: the same unit over a full year as an animation: water and atrazine particles move along the treatment or bypass path, the three carbon stages fill up with colour, and the twin's panel shows its current instruction (raise boards, hold water, swap filter, bypass in winter).
+- **`cycle.py`**: the report's design over a full year as an animation: water and atrazine particles move along the treatment or bypass path, the three biochar cartridges and the GAC polish fill up with colour, and the twin's panel shows its current instruction (raise boards, hold water, swap the lead cartridge, bypass in winter). On a swap, C2 and C3 move up and fresh media goes in last.
 
 ## Run it
 
 ```bash
 pip install -r requirements.txt
-python dcbas_sim.py          # prints each upgrade step, saves nephron2_ladder.png
+python report-v2/nephron_v2_sim.py report-v2/figures   # the report's model, 5 designs x 200 seasons
+python dcbas_sim.py          # Nephron 1.0 to 2.5 exploration, saves nephron2_ladder.png
 python cycle.py stills       # six PNG frames of the year
-python cycle.py              # full 365-day video (needs ffmpeg)
+python cycle.py              # full 365-day video, nephron_cycle.mp4 (needs ffmpeg)
 ```
 
 ## Limits
 
-Every coefficient (removal rates, carbon capacity, rain statistics) is a competition-day estimate, not a measurement, the river numbers assume uniform adoption, and surface runoff is set to 30% of the load. The biochar, inlet-capture and buffer values are estimates to be checked against field studies. The model is a tool for comparing operating strategies, not a prediction of real river concentrations.
+The report's model draws every uncertain input from a range taken from published studies (Table IV of the report), but several of those ranges had no direct data and are marked as assumptions; [CHANGES.md](report-v2/CHANGES.md) lists them. The biggest unknown is how much atrazine wood biochar holds in cold field water, which is the first thing a pilot would measure. The 2.0 / 2.5 coefficients are competition-day estimates. River numbers assume uniform adoption. The models compare designs and operating strategies; they are not predictions of real river concentrations.

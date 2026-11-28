@@ -1,3 +1,14 @@
+"""NEPHRON over one year as an animation (design from the revised report, v2).
+
+Tile water runs through the inlet box, the woodchip trench and the carbon box
+(three biochar cartridges C1-C3, then a GAC polish) to the ditch. The bars show
+how full each cartridge is. The twin swaps the lead cartridge when it is nearly
+full (the others move up, fresh media goes in last) and holds water in the field
+before storms. Off-season, the inlet box sends all water round the unit.
+
+Run:  python cycle.py stills    six PNG frames
+      python cycle.py           365-day video (needs ffmpeg)
+"""
 import sys
 import numpy as np
 import matplotlib
@@ -23,6 +34,9 @@ def flow(d):
 def twin(d):
     if d < 15:
         return "Start", "gold", (68, 59)
+    for sd in swap_days:
+        if sd <= d < sd + 5:
+            return "Swap C1", "red", (CART_X[0], 42)
     if SPRAY <= d < SPRAY + 3:
         return "Spray day", "gold", (30, 60)
     for s in STORMS:
@@ -30,27 +44,30 @@ def twin(d):
             return "Raise boards", "gold", (68, 59)
         if s <= d < s + 6:
             return "Hold water", "gold", (30, 47)
-    if swap_day <= d < swap_day + 7:
-        return "Swap filter", "red", (112, 42)
     if SEASON_OFF <= d < SEASON_OFF + 7:
         return "Bypass", "gold", (68, 59)
     return "All good", "green", None
 
-fill = np.zeros((366, 3))
-swap_day = 999
-f = np.zeros(3)
+CART_X = [113, 118.5, 124, 129.5]          # C1, C2, C3 (biochar), GAC polish
+CART_NAMES = ["C1", "C2", "C3", "GAC"]
+fill = np.zeros((366, 4))
+swap_days = []
+f = np.zeros(4)
 for d in range(365):
     if 15 <= d < SEASON_OFF:
         load = atrazine(d) * flow(d)
-        f += load * np.array([1 / 42, 1 / 150, 1 / 700])
-    if d >= SWAP_START and f[0] >= 0.85 and swap_day == 999:
-        swap_day = d
-        f[0] = 0
+        f += load * np.array([1 / 24, 1 / 90, 1 / 400, 1 / 2500])
+    if 15 <= d < SEASON_OFF and f[0] >= 0.85 and (not swap_days or d - swap_days[-1] > 10):
+        swap_days.append(d)                   # lead out, others move up, fresh media last
+        f[:3] = [f[1], f[2], 0.0]
     f = np.clip(f, 0, 1)
     fill[d] = f
+swap_day = swap_days[0] if swap_days else 999
 
-TREAT = [(3, 41), (66, 41), (66, 36), (80, 36), (105, 41), (112, 41), (112, 33), (112, 50), (120, 50),
-         (120, 33), (128, 33), (128, 50), (134, 47), (142, 47), (142, 52), (152, 52)]
+TREAT = [(3, 41), (66, 41), (66, 36), (80, 36), (105, 41), (CART_X[0], 41)]
+for k, x in enumerate(CART_X):
+    TREAT += [(x, 33), (x, 50)] if k % 2 == 0 else [(x, 50), (x, 33)]
+TREAT += [(134, 47), (142, 47), (142, 52), (152, 52)]
 BYPASS = [(3, 41), (66, 41), (66, 36), (80, 36), (105, 41), (107, 41), (107, 25), (142, 25), (142, 52), (152, 52)]
 
 def point(path, t):
@@ -91,33 +108,35 @@ def draw(d):
     ax.plot([2, 66], [41, 41], color="#333", lw=7)
     ax.text(20, 37.5, "Tile drain", ha="center", fontsize=11, fontweight="bold", color="white")
     ax.plot([107, 107, 142], [41, 25, 25], color="#333", lw=5)
-    ax.plot([48, 48], [41, 56], color="#333", lw=5)
-    ax.add_patch(Rectangle((45.5, 55.5), 5, 2, color="#333"))
-    ax.text(48, 59.5, "Surface inlet", ha="center", fontsize=10, fontweight="bold")
     box(62, 28, 12, 28, "Inlet box")
-    box(79, 33, 26, 16, "Woodchip + biochar", "#c99a5c")
+    box(79, 33, 26, 16, "Woodchip trench", "#c99a5c")
     box(110, 28, 24, 26, "Carbon box")
     box(138, 30, 8, 26, "Outlet")
     ax.add_patch(Rectangle((148, 49), 12, 4, color="#6fb6e8"))
     ax.text(153.5, 45, "Ditch", ha="center", fontsize=11, fontweight="bold", color="white")
     ax.add_patch(Rectangle((63.2, 51), 9.6, 3.2, color="green" if treating else "grey"))
+    for x, w in [(61.5, 13), (109.5, 25), (137.5, 9)]:           # insulated, locked lids
+        ax.add_patch(Rectangle((x, 55), w, 1.6, color="#3d4650"))
 
-    for k, x in enumerate([112.5, 120, 127.5]):
+    for k, x in enumerate(CART_X):
         level = fill[d, k]
-        ax.add_patch(Rectangle((x - 2.8, 31), 5.6, 21, fc="#333", ec=plt.cm.RdYlGn_r(level), lw=3))
-        ax.add_patch(Rectangle((x - 2.8, 31), 5.6, 21 * level, color=plt.cm.RdYlGn_r(level), alpha=0.6))
-        ax.text(x, 41.5, f"{level:.0%}", ha="center", fontsize=10, fontweight="bold", color="white")
+        w = 4.4 if k < 3 else 3.6
+        ax.add_patch(Rectangle((x - w / 2, 31), w, 21, fc="#333" if k < 3 else "#15181c",
+                               ec=plt.cm.RdYlGn_r(level), lw=3))
+        ax.add_patch(Rectangle((x - w / 2, 31), w, 21 * level, color=plt.cm.RdYlGn_r(level), alpha=0.6))
+        ax.text(x, 41.5, f"{level:.0%}", ha="center", fontsize=9, fontweight="bold", color="white")
+        ax.text(x, 48, CART_NAMES[k], ha="center", fontsize=8, fontweight="bold", color="white")
 
     dots = (dots + 0.004 * flow(d)) % 1
     path = TREAT if treating else BYPASS
     for t in dots:
         x, y = point(path, t)
-        clean = treating and x > 117
+        clean = treating and x > 116
         dirty = atrazine(d) > 0.3 and not clean
         ax.add_patch(Circle((x, y), 0.8, color="orange" if dirty else "#4aa3e0" if clean else "#9fb7c9"))
 
     word, color, target = twin(d)
-    for sx, sy in [(64, 45), (102, 46), (109, 43), (124, 53), (142, 40)]:
+    for sx, sy in [(64, 45), (102, 46), (109, 43), (121.25, 53.8), (142, 40)]:
         ax.add_patch(Circle((sx, sy), 1.6, fc="#1e88e5", ec="white", lw=2))
         ax.plot([sx, 142], [sy, 68], color="white", lw=1.8, ls="--")
     ax.add_patch(Rectangle((141, 67), 16, 21, color="#222"))
@@ -142,8 +161,8 @@ def draw(d):
     ax.plot([4 + 152 * d / 365] * 2, [3, 7], color="white", lw=3)
 
 if len(sys.argv) > 1:
-    for d in [10, 46, 56, 100, swap_day + 2, 250]:
+    for d in [10, 46, 56] + [sd + 2 for sd in swap_days] + [250]:
         draw(d)
         fig.savefig(f"still_{d:03d}.png", dpi=80)
 else:
-    FuncAnimation(fig, draw, frames=365).save("dcbas_cycle.mp4", writer=FFMpegWriter(fps=24))
+    FuncAnimation(fig, draw, frames=365).save("nephron_cycle.mp4", writer=FFMpegWriter(fps=24))

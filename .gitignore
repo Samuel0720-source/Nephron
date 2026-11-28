@@ -4,3 +4,6 @@ still_*.png
 twin_benefit.png
 .venv/
 nephron2_ladder.png
+cad/out/mesh/
+cad/out/manifest.json
+cad/out/origin.json
