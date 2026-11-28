@@ -8,6 +8,8 @@ SURF_K = 0.28
 
 V1 = dict(wood=0.25, cap=3.5, holds=50, store=0, swap_at=0.85, inlet=0, buffer=0)
 V2 = dict(wood=0.40, cap=5.0, holds=100, store=60, swap_at=0.93, inlet=0.9, buffer=0.5)
+V3 = dict(V2, store=100, swap_at=0.96, inlet=0.95)
+SEASONS = 2000
 
 
 def weather(seed):
@@ -88,15 +90,15 @@ def season(seed, twin, wood, cap, holds, store, swap_at, inlet, buffer):
 
 
 def median_run(twin, design):
-    runs = [season(s, twin, **design) for s in range(200)]
+    runs = [season(s, twin, **design) for s in range(SEASONS)]
     lost = {k: np.median([r[k] for r in runs]) for k in runs[0]}
-    field = 1 - np.median([sum(r.values()) for r in runs])
+    field = np.array([1 - sum(r.values()) for r in runs])
     return field, lost
 
 
 kg = RIVER_CONC * RIVER_FLOW * 86400 / 1e6
 print(f"River: {RIVER_FLOW:.1f} m3/s at {RIVER_CONC} ug/L = {kg:.1f} kg atrazine per day")
-print(f"Nephron on {COVERAGE:.0%} of fields, 200 random seasons each\n")
+print(f"{SEASONS} random seasons per design\n")
 
 steps = [
     ("Nephron 1.0\nno sensors", False, V1),
@@ -106,22 +108,24 @@ steps = [
     ("+ twin holds\nwater in field", True, dict(V2, inlet=0, buffer=0)),
     ("+ surface\ninlet", True, dict(V2, buffer=0)),
     ("+ grass\nbuffer strip", True, V2),
+    ("Nephron 2.5\n98% of fields", True, V3, 0.98),
 ]
 drops = []
-for name, twin, design in steps:
+for name, twin, design, *cov in steps:
     field, lost = median_run(twin, design)
-    river = field * COVERAGE
+    rivers = field * (cov[0] if cov else COVERAGE)
+    river = np.median(rivers)
     drops.append(river * 100)
-    print(f"{name.replace(chr(10), ' '):28s} river drops {river:.1%}  ({RIVER_CONC} -> {RIVER_CONC * (1 - river):.3f} ug/L)")
+    print(f"{name.replace(chr(10), ' '):28s} river drops {river:.1%}  ({RIVER_CONC} -> {RIVER_CONC * (1 - river):.3f} ug/L)  wet year {np.percentile(rivers, 10):.0%}  seasons over 90%: {np.mean(rivers >= 0.9):.0%}")
     print("    lost to: " + ", ".join(f"{k} {max(v, 0):.1%}" for k, v in lost.items()))
 
-plt.figure(figsize=(11, 5))
-bars = plt.bar([s[0] for s in steps], drops, color=["orange", "#2a78d6"] + ["#1b9e77"] * 5)
+plt.figure(figsize=(12.5, 5))
+bars = plt.bar([s[0] for s in steps], drops, color=["orange", "#2a78d6"] + ["#1b9e77"] * 5 + ["#0b6e4f"])
 plt.bar_label(bars, fmt="%.0f%%")
 plt.axhline(90, ls=":", color="red", label="case goal 90%")
 plt.ylabel("atrazine drop in the river (%)")
 plt.ylim(0, 100)
-plt.title("Nephron 1.0 to 2.0, one upgrade at a time (200 seasons each)")
+plt.title(f"Nephron 1.0 to 2.5, one upgrade at a time ({SEASONS} seasons each)")
 plt.legend()
 plt.tight_layout()
 plt.savefig("nephron2_ladder.png", dpi=200)
